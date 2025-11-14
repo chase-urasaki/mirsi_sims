@@ -65,66 +65,73 @@ class SkyBackgroundExposure:
         return frame
     
 #%%
+def compute_sky_background_rate(wavelength, temperature):
 # Compute the sky background rate for an atmosphere at 273k at 10 microns using the planck function
-def planck(wavelength, temperature):
-    """
-    Compute the Planck function for a black body at a given temperature.
+    def planck(wavelength, temperature):
+        """
+        Compute the Planck function for a black body at a given temperature.
 
-    Parameters:
-    -----------
-    wavelength : float
-        Wavelength in meters
-    temperature : float
-        Temperature in Kelvin
+        Parameters:
+        -----------
+        wavelength : float
+            Wavelength in meters
+        temperature : float
+            Temperature in Kelvin
 
-    Returns:
-    --------
-    intensity : float
-        Spectral radiance in W/m^2/m
-    """
-    h = 6.626e-34  # Planck's constant (J*s)
-    c = 3.0e8      # Speed of light (m/s)
-    k = 1.381e-23  # Boltzmann's constant (J/K)
+        Returns:
+        --------
+        intensity : float
+            Spectral radiance in W/m^2/m
+        """
+        h = 6.626e-34  # Planck's constant (J*s)
+        c = 3.0e8      # Speed of light (m/s)
+        k = 1.381e-23  # Boltzmann's constant (J/K)
 
-    # Planck's law
-    intensity = (2*h*c**2) / (wavelength**5 * (np.exp((h*c)/(wavelength*k*temperature)) - 1))
-    return intensity
+        # Planck's law
+        intensity = (2*h*c**2) / (wavelength**5 * (np.exp((h*c)/(wavelength*k*temperature)) - 1))
+        return intensity
 
-# Constants
-wavelength = 10e-6   # 10 microns in meters
-temperature = 273    # Temperature in Kelvin
-h = 6.626e-34       # Planck's constant (J*s)
-c = 3.0e8           # Speed of light (m/s)
+    # Constants
+    wavelength = 10e-6   # 10 microns in meters
+    temperature = 273    # Temperature in Kelvin
+    h = 6.626e-34       # Planck's constant (J*s)
+    c = 3.0e8           # Speed of light (m/s)
 
-# Detector and telescope parameters
-pixel_size = 50e-6  # Pixel size in meters (typical for IR detectors)
-f_number = 37       # Typical f/# for IRTF instrument
-bandpass = 5e-6     # Filter bandpass in meters (e.g., 1 micron wide)
-telescope_area = np.pi * (1.5)**2  # Telescope area in m^2 (8m diameter example)
-transmission = 0.3  # Typical system transmission
+    # Detector and telescope parameters
+    pixel_size = 50e-6  # Pixel size in meters (typical for IR detectors)
+    f_number = 37       # Typical f/# for IRTF instrument
+    bandpass = 5e-6     # Filter bandpass in meters (e.g., 1 micron wide)
+    telescope_area = np.pi * (1.5)**2  # Telescope area in m^2 (8m diameter example)
+    transmission = 0.3  # Typical system transmission
 
-# Calculate solid angle per pixel
-solid_angle_per_pixel = (pixel_size / f_number)**2  # steradians
+    # Calculate solid angle per pixel
+    solid_angle_per_pixel = (pixel_size / f_number)**2  # steradians
 
-# Spectral radiance from Planck function
-spectral_radiance = planck(wavelength, temperature)  # W/m^2/sr/m
+    # Spectral radiance from Planck function
+    spectral_radiance = planck(wavelength, temperature)  # W/m^2/sr/m
 
-# Power per pixel
-power_per_pixel = spectral_radiance * solid_angle_per_pixel * bandpass  # W/m^2
+    # Power per pixel
+    power_per_pixel = spectral_radiance * solid_angle_per_pixel * bandpass  # W/m^2
 
-# Photon energy
-photon_energy = h * c / wavelength  # J/photon
+    # Photon energy
+    photon_energy = h * c / wavelength  # J/photon
 
-# Photons per second per pixel
-photon_rate = (power_per_pixel / photon_energy) * transmission  # photons/s/pixel
+    # Photons per second per pixel
+    photon_rate = (power_per_pixel / photon_energy) * transmission  # photons/s/pixel
 
-sky_background_rate = photon_rate
-print(f"Sky background rate: {sky_background_rate:.2e} photons/s/pixel")
+    sky_background_rate = photon_rate
+    print(f"Sky background rate: {sky_background_rate:.2e} photons/s/pixel")
+
+    return sky_background_rate
 #%%
 # Detector parameters
 read_noise = 800 #e- / read rms
 dark_current = 50 # e- / s / pixel
 #%%
+
+# Compute sky background rate 
+sky_background_rate = compute_sky_background_rate(10e-6, 273)
+
 # Initialize the SkyBackgroundExposure simulator
 simulator = SkyBackgroundExposure(sky_background_rate, read_noise, dark_current)
 # Simulate an exposure of 50 ms 
