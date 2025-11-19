@@ -66,43 +66,92 @@ import numpy as np
 
 def generate_slow_drift(n_exposures, exposure_time, tau, amp_frac, rng=None):
     """
-    Generate a slow, correlated fractional drift term for the sky background.
+    Generate a slow, correlated fractional drift term for the sky background
+    using an Ornstein-Uhlenbeck (OU) process / AR(1) model.
+
+    This simulates slow atmospheric variations that cause the sky background
+    to drift coherently across multiple exposures. The drift follows an
+    exponentially-correlated Gaussian process.
 
     Parameters
     ----------
     n_exposures : int
-        Number of frames.
+        Number of frames in the sequence. Must be >= 2.
     exposure_time : float
         Cadence between frames [s] (assuming back-to-back exposures).
+        Must be positive.
     tau : float
-        Correlation timescale of the drift [s].
+        Correlation timescale of the drift [s]. Longer tau means slower,
+        more persistent drift. Must be positive.
     amp_frac : float
-        RMS amplitude of the fractional drift (e.g. 0.03 for ~3%).
+        RMS amplitude of the fractional drift (e.g., 0.03 for ~3% variation).
+        Must be non-negative.
     rng : np.random.Generator, optional
-        Random generator for reproducibility.
+        Random number generator for reproducibility. If None, a new
+        generator is created.
 
     Returns
     -------
-    drift_frac : (n_exposures,) ndarray
-        Zero-mean fractional drift. Use (1 + drift_frac[i]) as the
-        multiplicative factor on the *mean* sky background for frame i.
+    drift_frac : ndarray, shape (n_exposures,)
+        Zero-mean fractional drift with RMS amplitude of ~amp_frac.
+        Apply to sky background as: sky_rate * (1 + drift_frac[i])
+
+    Notes
+    -----
+    The OU process is defined by:
+        x[i] = rho * x[i-1] + sqrt(1 - rho^2) * eps[i]
+    where rho = exp(-dt/tau) and eps ~ N(0,1).
+    
+    This ensures the stationary variance is 1, which is then scaled by amp_frac.
+
+    Examples
+    --------
+    >>> rng = np.random.default_rng(42)
+    >>> drift = generate_slow_drift(100, 0.05, tau=10.0, amp_frac=0.03, rng=rng)
+    >>> print(f"RMS drift: {np.std(drift):.4f}")  # Should be ~0.03
     """
+    # Input validation
+    if n_exposures < 2:
+        raise ValueError(f"n_exposures must be >= 2, got {n_exposures}")
+    if exposure_time <= 0:
+        raise ValueError(f"exposure_time must be positive, got {exposure_time}")
+    if tau <= 0:
+        raise ValueError(f"tau must be positive, got {tau}")
+    if amp_frac < 0:
+        raise ValueError(f"amp_frac must be non-negative, got {amp_frac}")
+    
     if rng is None:
         rng = np.random.default_rng()
 
+    # Correlation coefficient between adjacent frames
     dt = exposure_time
-    rho = np.exp(-dt / tau)   # correlation between adjacent frames
-
+    rho = np.exp(-dt / tau)
+    
+    # Handle edge case: if dt >> tau, correlation is essentially zero
+    if rho < 1e-10:
+        # Pure white noise case (no correlation)
+        return amp_frac * rng.normal(size=n_exposures)
+    
+    # Generate OU/AR(1) process
     x = np.empty(n_exposures, dtype=float)
     x[0] = rng.normal()
 
+    # Stationary variance factor ensures long-term variance = 1
+    noise_scale = np.sqrt(1 - rho**2)
+    
     for i in range(1, n_exposures):
         eps = rng.normal()
-        x[i] = rho * x[i-1] + np.sqrt(1 - rho**2) * eps
+        x[i] = rho * x[i-1] + noise_scale * eps
 
-    # normalize to unit variance then scale to desired RMS amplitude
-    x /= np.std(x)
+    # Normalize to unit variance (handles finite sample effects)
+    # For very short sequences, std could be zero
+    x_std = np.std(x, ddof=1)
+    if x_std > 1e-10:
+        x = (x - np.mean(x)) / x_std  # Also ensure zero mean
+    
+    # Scale to desired amplitude
     drift_frac = amp_frac * x
+    
     return drift_frac
 
 
@@ -198,7 +247,7 @@ def make_exposure_sequence(n_exposures, exposure_time, drift=None, self_similar=
 #%%
     
 #%%
-test_sequence = make_exposure_sequence(6, 0.05, self_similar=True)
+test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
 # %%
 for i in range(test_sequence.shape[0]):
     plt.imshow(test_sequence[i], cmap='gray', origin='lower')
@@ -235,28 +284,53 @@ def coadd_expsoures(expsoure_seuqence, coadds):
 rng = np.random.default_rng(123)
 
 exposures = make_exposure_sequence(
-    n_exposures=60,
+    n_exposures=10,
     exposure_time=0.02,  # 50 ms
-    drift={"tau": 0.5, "amp_frac": 0.03, "rng": rng},
-    self_similar=True
+    drift={"tau": 100, "amp_frac": 0.001, "rng": rng},
+    #drift=None,
+    self_similar=False
 )
 #%%
 plt.imshow(exposures[0], cmap='gray', origin='lower')
 plt.colorbar(label='Electrons')
 #%%
-
-coadded_sequence = coadd_expsoures(test_sequence, 2)
-#%% 
-# Show coadded frames 
-for i in range(coadded_sequence.shape[0]):
-    plt.imshow(coadded_sequence[i], cmap='gray', origin='lower')
-    plt.title(f'Coadded Exposure {i+1}')
+# show all the exposures 
+for i in range(exposures.shape[0]):
+    plt.imshow(exposures[i], cmap='gray', origin='lower')
+    plt.title(f'Exposure {i+1}')
     plt.colorbar(label='Electrons')
     plt.show()
 #%%
+# Plot the mean and variance of each 
+for i, exposure in enumerate(exposures):
+    plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Exposure {i+1}')
+    plt.legend()
+# 
+# #%%
+coadded_sequence = coadd_expsoures(exposures, 2)
+#%% 
+# Show coadded frames 
+for i in range(coadded_sequence.shape[0]):
+    plt.imshow(coadded_sequence[i], cmap='gray', origin='lower', label= f'exposure {i+1}')
+    plt.title(f'Coadded Exposure {i+1}')
+    plt.legend()
+    plt.colorbar(label='Electrons')
+    plt.show()
+
+#%%
+# Plot the mean and variance of each coadded frame
+for i, exposure in enumerate(coadded_sequence):
+    plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Coadded Exposure {i+1}')
+    plt.legend()
 #%%
 def find_statistics(exposure_sequence):
     """"
-    Function takes an exposure sequence (coadded or not), and computes in 5
+    Function takes an exposure sequence (coadded or not), and computes the mean and variance of each frame.
     """
+    means = []
+    variances = []
+    for exposure in exposure_sequence:
+        means.append(np.mean(exposure))
+        variances.append(np.var(exposure))
+    return np.array(means), np.array(variances)
 # %%
