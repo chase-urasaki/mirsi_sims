@@ -286,8 +286,8 @@ rng = np.random.default_rng(123)
 exposures = make_exposure_sequence(
     n_exposures=10,
     exposure_time=0.02,  # 50 ms
-    drift={"tau": 100, "amp_frac": 0.001, "rng": rng},
-    #drift=None,
+    #drift={"tau": 100, "amp_frac": 0.001, "rng": rng},
+    drift=None,
     self_similar=False
 )
 #%%
