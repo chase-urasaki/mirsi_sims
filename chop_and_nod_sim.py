@@ -16,7 +16,7 @@ def mag_to_flux(mag):
 
 def inject_point_source(exposure_sequence, position, mag):
     """
-    Injects a point source into each frame of the exposure sequence.
+    Injects a point source into every chopped frame of the exposure sequence.
     
     Parameters:
     -----------
@@ -45,5 +45,58 @@ def inject_point_source(exposure_sequence, position, mag):
 
 # Make exposure sequence for testing 
 from exposure_sequences import make_exposure_sequence
-
+#%%
 expsoure_sequence = make_exposure_sequence(6, 0.02, self_similar=False)
+ #%%
+
+def subtract_frames(exposure_sequence): 
+    """
+    Subtracts frames in ABBA sequence static background.
+    
+    Parameters:
+    -----------
+    exposure_sequence : np.ndarray
+        3D array of shape (n_exposures, height, width).
+        
+    Returns:
+    --------
+    np.ndarray
+        3D array of shape (n_exposures - 1, height, width) containing the subtracted frames.
+    """
+    n_exposures = exposure_sequence.shape[0]
+    subtracted_sequence = np.zeros((n_exposures - 1, exposure_sequence.shape[1], exposure_sequence.shape[2]))
+    
+    for i in range(n_exposures - 1):
+        subtracted_sequence[i] = exposure_sequence[i + 1] - exposure_sequence[i]
+        
+    return subtracted_sequence
+
+
+
+# Test the frame subtraction
+#%%
+# Add if name == main block to prevent auto-execution on import
+if __name__ == "__main__":
+    """ 
+    For testing purposes
+    """
+
+    # Imshow exposure sequence 
+    for i in range(expsoure_sequence.shape[0]):
+        plt.imshow(expsoure_sequence[i], cmap='gray', origin='lower')
+        plt.title(f'Exposure {i}')
+        plt.colorbar(label='Electrons')
+        plt.show()
+
+#%%
+    # Subtract frames
+    subtracted_sequence = subtract_frames(expsoure_sequence)
+# %%
+    # Show subtracted frames
+    for i in range(subtracted_sequence.shape[0]):
+        plt.imshow(subtracted_sequence[i], cmap='gray', origin='lower')
+        plt.title(f'Subtracted Frame {i+1} - Frame {i}')
+        plt.colorbar(label='Electrons')
+        plt.show()
+
+# %%

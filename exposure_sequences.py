@@ -244,17 +244,21 @@ def make_exposure_sequence(n_exposures, exposure_time, drift=None, self_similar=
             exposures[i] = frame
 
     return exposures
+
 #%%
-    
-#%%
-test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
-# %%
-for i in range(test_sequence.shape[0]):
-    plt.imshow(test_sequence[i], cmap='gray', origin='lower')
-    plt.title(f'Exposure {i+1}')
-    plt.colorbar(label='Electrons')
-    plt.show()
-# %%
+# ============================================================================
+# Test/Demo code - only runs when this file is executed directly
+# ============================================================================
+if __name__ == "__main__":
+    #%%
+    test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
+    # %%
+    for i in range(test_sequence.shape[0]):
+        plt.imshow(test_sequence[i], cmap='gray', origin='lower')
+        plt.title(f'Exposure {i+1}')
+        plt.colorbar(label='Electrons')
+        plt.show()
+    # %%
 def coadd_expsoures(expsoure_seuqence, coadds):
     """ 
     This function takes in an exposure sequence and coadds 
@@ -280,49 +284,7 @@ def coadd_expsoures(expsoure_seuqence, coadds):
         coadded_exposures[i//coadds] = coadded_frame
     # Return a new array with the coadded frames.
     return coadded_exposures
-#%%
-rng = np.random.default_rng(123)
 
-exposures = make_exposure_sequence(
-    n_exposures=10,
-    exposure_time=0.02,  # 50 ms
-    #drift={"tau": 100, "amp_frac": 0.001, "rng": rng},
-    drift=None,
-    self_similar=False
-)
-#%%
-plt.imshow(exposures[0], cmap='gray', origin='lower')
-plt.colorbar(label='Electrons')
-#%%
-# show all the exposures 
-for i in range(exposures.shape[0]):
-    plt.imshow(exposures[i], cmap='gray', origin='lower')
-    plt.title(f'Exposure {i+1}')
-    plt.colorbar(label='Electrons')
-    plt.show()
-#%%
-# Plot the mean and variance of each 
-for i, exposure in enumerate(exposures):
-    plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Exposure {i+1}')
-    plt.legend()
-# 
-# #%%
-coadded_sequence = coadd_expsoures(exposures, 2)
-#%% 
-# Show coadded frames 
-for i in range(coadded_sequence.shape[0]):
-    plt.imshow(coadded_sequence[i], cmap='gray', origin='lower', label= f'exposure {i+1}')
-    plt.title(f'Coadded Exposure {i+1}')
-    plt.legend()
-    plt.colorbar(label='Electrons')
-    plt.show()
-
-#%%
-# Plot the mean and variance of each coadded frame
-for i, exposure in enumerate(coadded_sequence):
-    plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Coadded Exposure {i+1}')
-    plt.legend()
-#%%
 def find_statistics(exposure_sequence):
     """"
     Function takes an exposure sequence (coadded or not), and computes the mean and variance of each frame.
@@ -333,4 +295,52 @@ def find_statistics(exposure_sequence):
         means.append(np.mean(exposure))
         variances.append(np.var(exposure))
     return np.array(means), np.array(variances)
-# %%
+
+#%%
+# ============================================================================
+# More test/demo code
+# ============================================================================
+if __name__ == "__main__":
+    #%%
+    rng = np.random.default_rng(123)
+
+    exposures = make_exposure_sequence(
+        n_exposures=10,
+        exposure_time=0.02,  # 50 ms
+        #drift={"tau": 100, "amp_frac": 0.001, "rng": rng},
+        drift=None,
+        self_similar=False
+    )
+    #%%
+    plt.imshow(exposures[0], cmap='gray', origin='lower')
+    plt.colorbar(label='Electrons')
+    #%%
+    # show all the exposures
+    for i in range(exposures.shape[0]):
+        plt.imshow(exposures[i], cmap='gray', origin='lower')
+        plt.title(f'Exposure {i+1}')
+        plt.colorbar(label='Electrons')
+        plt.show()
+    #%%
+    # Plot the mean and variance of each 
+    for i, exposure in enumerate(exposures):
+        plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Exposure {i+1}')
+        plt.legend()
+
+    # #%%
+    coadded_sequence = coadd_expsoures(exposures, 2)
+    #%% 
+    # Show coadded frames 
+    for i in range(coadded_sequence.shape[0]):
+        plt.imshow(coadded_sequence[i], cmap='gray', origin='lower', label= f'exposure {i+1}')
+        plt.title(f'Coadded Exposure {i+1}')
+        plt.legend()
+        plt.colorbar(label='Electrons')
+        plt.show()
+
+    #%%
+    # Plot the mean and variance of each coadded frame
+    for i, exposure in enumerate(coadded_sequence):
+        plt.hist(exposure.flatten(), bins=50, alpha=0.5, label=f'Coadded Exposure {i+1}')
+        plt.legend()
+    # %%

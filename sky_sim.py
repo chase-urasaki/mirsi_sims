@@ -120,87 +120,40 @@ def compute_sky_background_rate(wavelength, temperature):
     photon_rate = (power_per_pixel / photon_energy) * transmission  # photons/s/pixel
 
     sky_background_rate = photon_rate
-    print(f"Sky background rate: {sky_background_rate:.2e} photons/s/pixel")
+    print(f"Planck Sky background rate: {sky_background_rate:.2e} photons/s/pixel")
 
     return sky_background_rate
+
 #%%
-# Detector parameters
-read_noise = 800 #e- / read rms
-dark_current = 50 # e- / s / pixel
-#%%
+# ============================================================================
+# Test/Demo code - only runs when this file is executed directly
+# ============================================================================
+if __name__ == "__main__":
+    #%%
+    # Detector parameters
+    read_noise = 800 #e- / read rms
+    dark_current = 50 # e- / s / pixel
+    #%%
 
-# Compute sky background rate 
-sky_background_rate = compute_sky_background_rate(10e-6, 273)
+    # Compute sky background rate 
+    sky_background_rate = compute_sky_background_rate(10e-6, 273)
 
-# Initialize the SkyBackgroundExposure simulator
-simulator = SkyBackgroundExposure(sky_background_rate, read_noise, dark_current)
-# Simulate an exposure of 50 ms 
-exposure_time = 0.05  # seconds
-frame = simulator.simulate_exposure(exposure_time)
+    # Initialize the SkyBackgroundExposure simulator
+    simulator = SkyBackgroundExposure(sky_background_rate, read_noise, dark_current)
+    # Simulate an exposure of 50 ms 
+    exposure_time = 0.05  # seconds
+    frame = simulator.simulate_exposure(exposure_time)
 
 # %%
-# Insert a photometric aperture function into the SkyBackgroundExposure class
-class SkyBackgroundExposure_with_aperture(SkyBackgroundExposure):
-    def photometric_aperture(self, frame, aperture_radius, center=None):
-        """
-        Perform photometric aperture on the given frame.
-        
-        Parameters:
-        -----------
-        frame : ndarray
-            Simulated detector frame (electrons)
-        aperture_radius : float
-            Radius of the aperture in pixels
-        center : tuple, optional
-            (x, y) coordinates of the aperture center. If None, use center of the frame.
-            
-        Returns:
-        --------
-        total_signal : float
-            Total signal within the aperture (electrons)
-        """
-        y_size, x_size = frame.shape
-        if center is None:
-            center = (x_size // 2, y_size // 2)
-        
-        y_indices, x_indices = np.ogrid[:y_size, :x_size]
-        distance_from_center = np.sqrt((x_indices - center[0])**2 + (y_indices - center[1])**2)
-        
-        aperture_mask = distance_from_center <= aperture_radius
-        aperture_counts = frame[aperture_mask]
-        total_signal = np.sum(frame[aperture_mask])
+# Insert a photometric aperture function into the SkyBackgroundExposure cl
 
-        # Draw the aperture on the frame for visualization
-        fig, ax = plt.subplots()
-        ax.imshow(frame, cmap='gray', origin='lower')
-        aperture_circle = Circle(center, aperture_radius, color='red', fill=False)
-        ax.add_patch(aperture_circle)
-        plt.show()
+if __name__ == "__main__":
+    # %%
+    # Redo with aperture photometry
+    # Use photutils to do aperture photometry
+    from photutils import CircularAnnulus
 
-        return aperture_counts, total_signal
-# %%
-# Redo with aperture photometry
-simulator_aperture = SkyBackgroundExposure_with_aperture(sky_background_rate, read_noise, dark_current)
-frame = simulator_aperture.simulate_exposure(exposure_time)
-aperture_radius = 10  # pixels
-aperture_counts, total_signal = simulator_aperture.photometric_aperture(frame, aperture_radius, center=None)
-print(f"Total signal within aperture: {total_signal:.2f} electrons")
-#%% 
-# Plot with the simulated image and two histograms: one for the aperture counts and one for the full frame counts
-fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-# Image
-axs[0].imshow(frame, cmap='gray', origin='lower')
-axs[0].add_patch(Circle((frame.shape[1]//2, frame.shape[0]//2), aperture_radius, color='red', fill=False))
-# Color bar for image
-cbar = plt.colorbar(axs[0].imshow(frame, cmap='gray', origin='lower'), ax=axs[0])
-cbar.set_label('Electrons')
-axs[0].set_title('Simulated Detector Frame')
-# Aperture counts histogram
-axs[1].hist(aperture_counts.flatten(), bins=30, color='blue', alpha=0.7)
-axs[1].set_title('Aperture Counts Histogram')
-# Full frame counts histogram
-axs[2].hist(frame.flatten(), bins=30, color='green', alpha=0.7)
-axs[2].set_title('Full Frame Counts Histogram')
-plt.tight_layout()
-plt.show()
-# %%
+    T
+
+   
+    # %%
