@@ -153,7 +153,7 @@ if __name__ == "__main__":
     # Use photutils to do aperture photometry
     from photutils import CircularAnnulus
 
-    T
+    # Test 
 
    
     # %%
