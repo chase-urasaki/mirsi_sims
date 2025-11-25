@@ -7,40 +7,76 @@ import matplotlib.pyplot as plt
 #%%
 # Inject a point source into an exposure sequence
 
-def mag_to_flux(mag):
-    """
-    Converts N-band magnitude to flux in Jy."""
-    zero_point_flux = 36.0  # Jy for N-band
-    flux = zero_point_flux * 10**(-mag / 2.5)
-    return flux
+def mag_to_flux_nband(mag, F0=36.0):
+    """Convert N-band magnitude → flux density in Jy."""
+    return F0 * 10**(-mag / 2.5)
 
-def inject_point_source(exposure_sequence, position, mag):
+
+def jy_to_photon_rate(Fnu_jy, throughput=0.2):
     """
-    Injects a point source into every chopped frame of the exposure sequence.
-    
-    Parameters:
-    -----------
-    exposure_sequence : np.ndarray
-        3D array of shape (n_exposures, height, width).
-    position : tuple
-        (y, x) coordinates where the point source will be injected.
-    mag : float
-        Magnitude of the point source to be injected.
-    extent: float 
-        Radius of the point source to be injected.
-        
-    Returns:
-    --------
-    np.ndarray
-        Modified exposure sequence with the point source injected.
+    Convert flux density (Jy) → photon rate (photons/sec) at detector.
+    Assumes N-band and MIRSI parameters.
     """
-    n_exposures, height, width = exposure_sequence.shape
-    y, x = position
-    
-    for i in range(n_exposures):
-        # Simple injection: add flux to the specified pixel
-        exposure_sequence[i, y, x] += mag_to_flux(mag)
-        
+    # Constants
+    c = 3e8
+    h = 6.626e-34
+    lam = 10e-6               # 10 µm effective
+    nu = c / lam
+
+    # Telescope effective area (MIRSI cold stop → D=3.0 m)
+    A_tel = np.pi * (1.5)**2  # m^2
+
+    # N-band bandwidth: Δλ ~ 5 µm → Δν = c/λ^2 * Δλ
+    delta_lam = 5e-6
+    delta_nu = c * delta_lam / (lam**2)
+
+    # Convert Jy → W/m²/Hz
+    Fnu = Fnu_jy * 1e-26
+
+    # Photon rate
+    photons_per_s = (Fnu * A_tel * delta_nu * throughput) / (h * nu)
+
+    return photons_per_s
+
+def photon_rate_from_mag(mag, throughput=0.2):
+    """Convenience wrapper: N-mag → photon/sec"""
+    Fnu = mag_to_flux_nband(mag)
+    return jy_to_photon_rate(Fnu, throughput=throughput)
+
+def inject_point_source(exposure_sequence, position, mag, extent,
+                        exposure_time=0.05,
+                        QE=0.5,
+                        throughput=0.2,
+                        nodding=False, throw=50):
+    """
+    Injects a point source into every chopped frame.
+    """
+    n_exp, H, W = exposure_sequence.shape
+    y0, x0 = position
+
+    # Photons per second from magnitude
+    photons_per_s = photon_rate_from_mag(mag, throughput=throughput)
+
+    # Photons per exposure
+    photons = photons_per_s * exposure_time
+
+    # Electrons generated
+    electrons = photons * QE
+
+    # Build a Gaussian PSF
+    yy, xx = np.indices((H, W))
+    rr2 = (yy - y0)**2 + (xx - x0)**2
+    sigma = extent / 2.355
+    psf = np.exp(-0.5 * rr2 / sigma**2)
+    psf /= psf.sum()  # normalize flux
+
+    for i in range(n_exp):
+        exposure_sequence[i] += electrons * psf
+
+        if nodding and (i % 2 == 1):
+            # nod position offset
+            exposure_sequence[i] += electrons * np.roll(psf, throw, axis=0)
+
     return exposure_sequence
 
 
