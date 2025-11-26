@@ -46,10 +46,30 @@ def photon_rate_from_mag(mag, throughput=0.2):
 def inject_point_source(exposure_sequence, position, mag, extent,
                         exposure_time=0.05,
                         QE=0.5,
-                        throughput=0.2,
+                        throughput=0.3,
                         nodding=False, throw=50):
     """
     Injects a point source into every chopped frame.
+    Parameters:
+    -----------
+    exposure_sequence : np.ndarray
+        3D array of shape (n_exposures, height, width).
+    position : tuple
+        (y, x) pixel coordinates of the point source.
+    mag : float
+        N-band magnitude of the point source.
+    extent : float
+        Full extent (FWHM) of the point source in pixels.
+    exposure_time : float
+        Exposure time per frame in seconds.
+    QE : float
+        Quantum efficiency of the detector. Default is 0.5. Set by the sky background calculation.
+    throughput : float
+        Total system throughput. Default is 0.3. Set by the sky background calculation.
+    nodding : bool
+        If True, adds nod position offset for every other frame. Default is False.
+    throw : int
+        Pixel offset for nod position. Default is 50 pixels.
     """
     n_exp, H, W = exposure_sequence.shape
     y0, x0 = position
@@ -76,6 +96,77 @@ def inject_point_source(exposure_sequence, position, mag, extent,
         if nodding and (i % 2 == 1):
             # nod position offset
             exposure_sequence[i] += electrons * np.roll(psf, throw, axis=0)
+
+    return exposure_sequence
+
+def inject_point_source_chop_nod(
+    exposure_sequence,
+    position,
+    mag,
+    extent,
+    exposure_time=0.02,
+    QE=0.5,
+    throughput=0.3,
+    chop_throw=20,
+    nod_throw=40,
+):
+    """
+    Inject a point source with a true chop–nod pattern into the exposure sequence.
+
+    Pattern (repeats every 4 frames):
+      i % 4 = 0 : nod - nod_throw, chop - chop_throw
+      i % 4 = 1 : nod - nod_throw, chop + chop_throw
+      i % 4 = 2 : nod + nod_throw, chop - chop_throw
+      i % 4 = 3 : nod + nod_throw, chop + chop_throw
+    """
+    n_exp, H, W = exposure_sequence.shape
+    y0, x0 = position
+
+    # Total electrons per exposure from the source
+    photons_per_s = photon_rate_from_mag(mag, throughput=throughput)
+    photons = photons_per_s * exposure_time
+    electrons = photons * QE
+
+    # Print number of electrons for debugging
+    print(f"Injecting point source of mag {mag} at position {position}:")
+    print(f"  Photons per second: {photons_per_s:.2e}")
+    print(f"  Electrons per exposure: {electrons:.2e}")
+
+    # Base PSF (centered at (y0, x0))
+    yy, xx = np.indices((H, W))
+    rr2 = (yy - y0)**2 + (xx - x0)**2
+    sigma = extent / 2.355  # FWHM ≈ extent
+    psf_base = np.exp(-0.5 * rr2 / sigma**2)
+    psf_base /= psf_base.sum()
+
+    for i in range(n_exp):
+        phase = i % 4
+
+        # nod sign: -1 for first 2 frames, +1 for next 2
+        nod_sign = -1 if phase < 2 else +1
+        # chop sign: -1 for even frames, +1 for odd frames
+        chop_sign = -1 if (phase % 2 == 0) else +1
+
+        dy = nod_sign * nod_throw
+        dx = chop_sign * chop_throw
+
+        # Shift PSF without wrap (zero-padding instead of np.roll wrap)
+        psf = np.zeros_like(psf_base)
+        y_start_src = max(0, -dy)
+        y_end_src   = min(H, H - dy)
+        x_start_src = max(0, -dx)
+        x_end_src   = min(W, W - dx)
+
+        y_start_dst = max(0, dy)
+        y_end_dst   = min(H, H + dy)
+        x_start_dst = max(0, dx)
+        x_end_dst   = min(W, W + dx)
+
+        psf[y_start_dst:y_end_dst, x_start_dst:x_end_dst] = \
+            psf_base[y_start_src:y_end_src, x_start_src:x_end_src]
+
+        # Inject into frame i
+        exposure_sequence[i] += electrons * psf
 
     return exposure_sequence
 
@@ -120,7 +211,7 @@ if __name__ == "__main__":
     # Make exposure sequence for testing 
     from exposure_sequences import make_exposure_sequence
     #%%
-    expsoure_sequence = make_exposure_sequence(6, 0.02, self_similar=False)
+    expsoure_sequence = make_exposure_sequence(4, 0.02, self_similar=False)
 
     # Sequence with correlated drift
     #test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
@@ -132,6 +223,26 @@ if __name__ == "__main__":
         plt.colorbar(label='Electrons')
         plt.show()
 
+#%%
+    # Inject point source into exposure sequence
+    expsoure_sequence = inject_point_source_chop_nod(
+        expsoure_sequence,
+        position=(120, 160),
+        mag=2.0,
+        extent=3.0,
+        exposure_time=0.02,
+        QE=0.5,
+        throughput=0.3,
+        chop_throw=20,
+        nod_throw=40,
+    )
+#%%
+    # Show frames with point source
+    for i in range(expsoure_sequence.shape[0]):
+        plt.imshow(expsoure_sequence[i], cmap='gray', origin='lower')
+        plt.title(f'Exposure with Point Source {i}')
+        plt.colorbar(label='Electrons')
+        plt.show()
 #%%
     # Subtract frames
     subtracted_sequence = subtract_frames(expsoure_sequence)
@@ -153,3 +264,4 @@ if __name__ == "__main__":
         plt.show()
 
 # %%
+    # 
