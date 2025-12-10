@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 import matplotlib.pyplot as plt
+from photutils.aperture import CircularAperture, CircularAnnulus, aperture_photometry 
 #%%
 # Inject a point source into an exposure sequence
 
@@ -125,7 +126,9 @@ def inject_point_source_chop_nod(
     # Total electrons per exposure from the source
     photons_per_s = photon_rate_from_mag(mag, throughput=throughput)
     photons = photons_per_s * exposure_time
-    electrons = photons * QE
+    shot_noise = np.random.poisson(photons) 
+    total_photons = photons + shot_noise
+    electrons = total_photons * QE
 
     # Print number of electrons for debugging
     print(f"Injecting point source of mag {mag} at position {position}:")
@@ -168,6 +171,8 @@ def inject_point_source_chop_nod(
         # Inject into frame i
         exposure_sequence[i] += electrons * psf
 
+        # Don't forget shot noise from the source
+
     return exposure_sequence
 
 
@@ -175,8 +180,10 @@ def inject_point_source_chop_nod(
 
 def subtract_frames(exposure_sequence): 
     """
-    Subtracts frames pairwise: (frame_0 - frame_1), (frame_2 - frame_3), (frame_4 - frame_5), etc.
-    This is used for chop subtraction where consecutive pairs represent chopped positions A and B.
+    Subtracts frames pairwise to generate both A-B and B-A differences.
+    For n input frames, generates n difference images:
+    - Pairs (0-1), (2-3), (4-5), etc. → A-B differences at even indices
+    - Pairs (1-0), (3-2), (5-4), etc. → B-A differences at odd indices
     
     Parameters:
     -----------
@@ -186,17 +193,23 @@ def subtract_frames(exposure_sequence):
     Returns:
     --------
     np.ndarray
-        3D array of shape (n_exposures//2, height, width) containing the subtracted frame pairs.
+        3D array of shape (n_exposures, height, width) containing both difference directions.
+        Even indices contain A-B, odd indices contain B-A.
     """
     # Make a new array to hold the subtracted frames
     n_exposures, height, width = exposure_sequence.shape
-    subtracted_sequence = np.zeros((n_exposures//2, height, width))
+    subtracted_sequence = np.zeros((n_exposures, height, width))
 
     # Subtract frames pairwise: (0-1), (2-3), (4-5), etc.
     for pair_idx in range(n_exposures // 2):
-        frame_a = pair_idx * 2
-        frame_b = pair_idx * 2 + 1
-        subtracted_sequence[pair_idx] = exposure_sequence[frame_a] - exposure_sequence[frame_b]
+        frame_a_idx = pair_idx * 2
+        frame_b_idx = pair_idx * 2 + 1
+        
+        # A - B at even output indices (0, 2, 4, ...)
+        subtracted_sequence[pair_idx * 2] = exposure_sequence[frame_a_idx] - exposure_sequence[frame_b_idx]
+        
+        # B - A at odd output indices (1, 3, 5, ...)
+        subtracted_sequence[pair_idx * 2 + 1] = exposure_sequence[frame_b_idx] - exposure_sequence[frame_a_idx]
 
     return subtracted_sequence
 
@@ -211,22 +224,22 @@ if __name__ == "__main__":
     # Make exposure sequence for testing 
     from exposure_sequences import make_exposure_sequence
     #%%
-    expsoure_sequence = make_exposure_sequence(4, 0.02, self_similar=False)
+    exposure_sequence = make_exposure_sequence(4, 0.02, self_similar=False)
 
     # Sequence with correlated drift
     #test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
 
     # Imshow exposure sequence 
-    for i in range(expsoure_sequence.shape[0]):
-        plt.imshow(expsoure_sequence[i], cmap='gray', origin='lower')
+    for i in range(exposure_sequence.shape[0]):
+        plt.imshow(exposure_sequence[i], cmap='gray', origin='lower')
         plt.title(f'Exposure {i}')
         plt.colorbar(label='Electrons')
         plt.show()
 
-#%%
+    #%%
     # Inject point source into exposure sequence
-    expsoure_sequence = inject_point_source_chop_nod(
-        expsoure_sequence,
+    exposure_sequence = inject_point_source_chop_nod(
+        exposure_sequence,
         position=(120, 160),
         mag=2.0,
         extent=3.0,
@@ -238,23 +251,32 @@ if __name__ == "__main__":
     )
 #%%
     # Show frames with point source
-    for i in range(expsoure_sequence.shape[0]):
-        plt.imshow(expsoure_sequence[i], cmap='gray', origin='lower')
+    for i in range(exposure_sequence.shape[0]):
+        plt.imshow(exposure_sequence[i], cmap='gray', origin='lower')
         plt.title(f'Exposure with Point Source {i}')
         plt.colorbar(label='Electrons')
         plt.show()
 #%%
     # Subtract frames
-    subtracted_sequence = subtract_frames(expsoure_sequence)
+    subtracted_sequence = subtract_frames(exposure_sequence)
+
+
+#%% 
+    # Draw three paertures, one off-source, one on-source and an annulus around the on-source
+    fig, ax = plt.subplots()
+    ax.imshow(subtracted_sequence[0], cmap='gray', origin='lower')
+    
 # %%
     # Show subtracted frames
     for i in range(subtracted_sequence.shape[0]):
+        
         plt.imshow(subtracted_sequence[i], cmap='gray', origin='lower')
         plt.title(f'Subtracted Frame {i+1} - Frame {i}')
         plt.colorbar(label='Electrons')
         plt.show()
 
 # %%
+
     # Show the statistics of the subtracted frames
     for i in range(subtracted_sequence.shape[0]):
         mean = np.mean(subtracted_sequence[i])
@@ -265,3 +287,4 @@ if __name__ == "__main__":
 
 # %%
     # 
+# %%

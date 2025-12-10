@@ -244,7 +244,7 @@ MIT License - see LICENSE file for details
 
 ## Contact
 
-Chase Alvarado
+Chase M. Urasaki
 - GitHub: [@chase-urasaki](https://github.com/chase-urasaki)
 - Repository: [mirsi_sims](https://github.com/chase-urasaki/mirsi_sims)
 
