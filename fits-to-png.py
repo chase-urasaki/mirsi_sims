@@ -27,8 +27,8 @@ def fits_to_png(fits_file, output_png):
 #%%
 if __name__ == "__main__":
     # input directory 
-    input_dir = "./data/251204/fits"
-    output_dir = "./data/251204/pngs"
+    input_dir = "./data/251214/fits"
+    output_dir = "./data/251214/pngs"
  
     os.makedirs(output_dir, exist_ok=True)
     fits_files = [f for f in os.listdir(input_dir) if f.endswith('.fits')]
@@ -36,7 +36,23 @@ if __name__ == "__main__":
         fits_path = os.path.join(input_dir, fits_file)
         png_filename = fits_file.replace('.fits', '.png')
         output_png_path = os.path.join(output_dir, png_filename)
-        fits_to_png(fits_path, output_png_path)
-        print(f"Converted {fits_file} to {png_filename}")
+        # accept an OSerror and and pass the fil name 
+        try:
+            fits_to_png(fits_path, output_png_path)
+            print(f"Converted {fits_file} to {png_filename}")
+        except OSError as e:
+            print(f"Error converting {fits_file}: {e}")
+            # Write filename to a log file
+            with open("conversion_errors.log", "a") as log_file:
+                log_file.write(f"{fits_file}\n")
+#%%
+    # Take log file and sort to file names in order 
+    with open("conversion_errors.log", "r") as log_file:
+        error_files = log_file.readlines()
+    error_files = [f.strip() for f in error_files]
+    error_files.sort()
+    with open("conversion_errors_sorted.log", "w") as sorted_log_file:
+        for f in error_files:
+            sorted_log_file.write(f"{f}\n")
 
 # %%

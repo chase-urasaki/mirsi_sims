@@ -259,7 +259,7 @@ if __name__ == "__main__":
         plt.colorbar(label='Electrons')
         plt.show()
     # %%
-def coadd_expsoures(expsoure_seuqence, coadds):
+def coadd_exposures(exposure_sequence, coadds, mode):
     """ 
     This function takes in an exposure sequence and coadds 
     then number of frames by averaging them together.
@@ -277,12 +277,20 @@ def coadd_expsoures(expsoure_seuqence, coadds):
         3D array with coadded frames (n_exposures//coadds, height, width)
     """  
     # Initialize array 
-    coadded_exposures = np.zeros((len(expsoure_seuqence)//coadds, expsoure_seuqence.shape[1], expsoure_seuqence.shape[2]))
+    coadded_exposures = np.zeros((len(exposure_sequence)//coadds, exposure_sequence.shape[1], exposure_sequence.shape[2]))
     # Take every cadded frame and average them. e.g. if coadd is two then coadd pairs of image . 
-    for i in range(0, len(expsoure_seuqence), coadds):
-        coadded_frame = np.mean(expsoure_seuqence[i:i+coadds], axis=0)
-        coadded_exposures[i//coadds] = coadded_frame
-    # Return a new array with the coadded frames.
+    if mode == 'average':
+        for i in range(0, len(exposure_sequence), coadds):
+            coadded_frame = np.mean(exposure_sequence[i:i+coadds], axis=0)
+            coadded_exposures[i//coadds] = coadded_frame
+        # Return a new array with the coadded frames.
+    elif mode == 'sum':
+        for i in range(0, len(exposure_sequence), coadds):
+            coadded_frame = np.sum(exposure_sequence[i:i+coadds], axis=0)
+            coadded_exposures[i//coadds] = coadded_frame
+
+    else: 
+        raise ValueError("Mode must be either 'average' or 'sum'")
     return coadded_exposures
 
 def find_statistics(exposure_sequence):

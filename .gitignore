@@ -1,0 +1,8 @@
+# Ignore all fits filese and data directories 
+*.fits
+
+# Specifically ignore data directories
+data/251204/fits/
+data/251204/pngs/
+data/251214/fits/
+data/251214/pngs/
