@@ -259,7 +259,7 @@ if __name__ == "__main__":
         plt.colorbar(label='Electrons')
         plt.show()
     # %%
-def coadd_exposures(exposure_sequence, coadds, mode):
+def coadd_exposures(exposure_sequence, coadds, mode = 'average'):
     """ 
     This function takes in an exposure sequence and coadds 
     then number of frames by averaging them together.

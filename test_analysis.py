@@ -296,8 +296,16 @@ def plot_frame_vs_temporal_variance(aperture_sum, n_coadd=1, label=None):
     plt.xlabel("Difference index")
     plt.ylabel("$(\\Delta$ Aperture Sum$)^2$ [counts$^2$]")
     plt.title(f"Frame vs Temporal Variance (coadd={n_coadd})")
+
+
+    # put variance of differences in the plot 
+    plt.text(0.3*len(frames), 0.9*np.max(d**2),
+              f"Variance of differences: {np.var(d, ddof=1):.3e}",
+              fontsize=10,
+              bbox=dict(facecolor='white', alpha=0.5))
     if label is not None:
-        plt.legend()
+        # put legend on left top
+        plt.legend(loc='upper left')
     plt.tight_layout()
     plt.show()
 
@@ -307,7 +315,7 @@ def plot_frame_vs_temporal_variance(aperture_sum, n_coadd=1, label=None):
     plot_frame_vs_temporal_variance(
         zenith1_phot['aperture_sum'],
         n_coadd=5,
-        label='Zenith 1'
+        label='12/04/25'
 )
 
 # %%
