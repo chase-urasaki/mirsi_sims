@@ -124,6 +124,99 @@ def compute_sky_background_rate(wavelength, temperature):
 
     return sky_background_rate
 
+def compute_sky_background_rate_with_tel(wavelength, temperature_sky, temperature_telescope, 
+                                emissivity_telescope=0.1):
+    """
+    Compute the sky background rate including contributions from both sky and telescope.
+    
+    Parameters:
+    -----------
+    wavelength : float
+        Wavelength in meters
+    temperature_sky : float
+        Sky temperature in Kelvin
+    temperature_telescope : float
+        Telescope mirror temperature in Kelvin
+    emissivity_telescope : float
+        Telescope thermal emissivity (0-1), default 0.1 for aluminum mirrors
+    
+    Returns:
+    --------
+    total_rate : float
+        Total photon rate (photons/s/pixel)
+    """
+    def planck(wavelength, temperature):
+        """
+        Compute the Planck function for a black body at a given temperature.
+
+        Parameters:
+        -----------
+        wavelength : float
+            Wavelength in meters
+        temperature : float
+            Temperature in Kelvin
+
+        Returns:
+        --------
+        intensity : float
+            Spectral radiance in W/m^2/sr/m
+        """
+        h = 6.626e-34  # Planck's constant (J*s)
+        c = 3.0e8      # Speed of light (m/s)
+        k = 1.381e-23  # Boltzmann's constant (J/K)
+
+        # Planck's law
+        intensity = (2*h*c**2) / (wavelength**5 * (np.exp((h*c)/(wavelength*k*temperature)) - 1))
+        return intensity
+
+    # Constants
+    h = 6.626e-34       # Planck's constant (J*s)
+    c = 3.0e8           # Speed of light (m/s)
+
+    # Detector and telescope parameters
+    pixel_size = 50e-6  # Pixel size in meters (typical for IR detectors)
+    f_number = 37       # Typical f/# for IRTF instrument
+    bandpass = 5e-6     # Filter bandpass in meters (e.g., 1 micron wide)
+    telescope_area = np.pi * (1.5)**2  # Telescope area in m^2 (3m diameter)
+    transmission = 0.3  # Typical system transmission
+
+    # Calculate solid angle per pixel
+    solid_angle_per_pixel = (pixel_size / f_number)**2  # steradians
+
+    # Photon energy
+    photon_energy = h * c / wavelength  # J/photon
+
+    # ===== SKY CONTRIBUTION =====
+    # Spectral radiance from sky
+    spectral_radiance_sky = planck(wavelength, temperature_sky)  # W/m^2/sr/m
+    
+    # Power per pixel from sky
+    power_per_pixel_sky = spectral_radiance_sky * solid_angle_per_pixel * bandpass  # W/m^2
+    
+    # Photons per second per pixel from sky (transmitted through optics)
+    photon_rate_sky = (power_per_pixel_sky / photon_energy) * transmission  # photons/s/pixel
+
+    # ===== TELESCOPE CONTRIBUTION =====
+    # Spectral radiance from telescope
+    spectral_radiance_telescope = planck(wavelength, temperature_telescope)  # W/m^2/sr/m
+    
+    # Power per pixel from telescope emission (scaled by emissivity)
+    power_per_pixel_telescope = (spectral_radiance_telescope * solid_angle_per_pixel * 
+                                 bandpass * emissivity_telescope)  # W/m^2
+    
+    # Photons per second per pixel from telescope (no additional transmission loss)
+    photon_rate_telescope = power_per_pixel_telescope / photon_energy  # photons/s/pixel
+
+    # ===== TOTAL RATE =====
+    total_rate = photon_rate_sky + photon_rate_telescope
+    
+    print(f"Sky background rate: {photon_rate_sky:.2e} photons/s/pixel")
+    print(f"Telescope thermal emission rate: {photon_rate_telescope:.2e} photons/s/pixel")
+    print(f"Total background rate: {total_rate:.2e} photons/s/pixel")
+    print(f"Telescope contribution: {100*photon_rate_telescope/total_rate:.1f}%")
+
+    return total_rate
+
 #%%
 # ============================================================================
 # Test/Demo code - only runs when this file is executed directly
