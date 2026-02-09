@@ -178,7 +178,7 @@ def compute_sky_background_rate_with_tel(wavelength, temperature_sky, temperatur
     f_number = 37       # Typical f/# for IRTF instrument
     bandpass = 5e-6     # Filter bandpass in meters (e.g., 1 micron wide)
     telescope_area = np.pi * (1.5)**2  # Telescope area in m^2 (3m diameter)
-    transmission = 0.3  # Typical system transmission
+    transmission = 0.1  # Typical system transmission
 
     # Calculate solid angle per pixel
     solid_angle_per_pixel = (pixel_size / f_number)**2  # steradians
@@ -215,7 +215,7 @@ def compute_sky_background_rate_with_tel(wavelength, temperature_sky, temperatur
     print(f"Total background rate: {total_rate:.2e} photons/s/pixel")
     print(f"Telescope contribution: {100*photon_rate_telescope/total_rate:.1f}%")
 
-    return total_rate
+    return total_rate, photon_rate_sky, photon_rate_telescope
 
 #%%
 # ============================================================================
