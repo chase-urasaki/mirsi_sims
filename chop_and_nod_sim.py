@@ -174,8 +174,6 @@ def inject_point_source_chop_nod(
         # Don't forget shot noise from the source
 
     return exposure_sequence
-
-
  #%%
 
 def subtract_frames(exposure_sequence): 
@@ -213,6 +211,114 @@ def subtract_frames(exposure_sequence):
 
     return subtracted_sequence
 
+def variance_vs_frequency_chop_proxy_true(x, coadds_list, frame_dt_s, method="mean", ddof=1):
+    out = {"coadds": [], "f_eff_hz": [], "n_blocks": [], "n_pairs": [], "var_diff": []}
+
+    for n in coadds_list:
+        Ntrim = (len(x) // n) * n
+        if Ntrim < 4*n:   # need at least 2 A-B pairs
+            continue
+
+        if method == "mean":
+            xb = x[:Ntrim].reshape(-1, n).mean(axis=1)
+        elif method == "sum":
+            xb = x[:Ntrim].reshape(-1, n).sum(axis=1)
+        else:
+            raise ValueError("method must be 'mean' or 'sum'")
+
+        n_pairs = len(xb) // 2
+        xb2 = xb[:2*n_pairs]
+        d = xb2[0::2] - xb2[1::2]   # A - B
+
+        out["coadds"].append(n)
+        out["f_eff_hz"].append(1.0 / (frame_dt_s * n))
+        out["n_blocks"].append(len(xb))
+        out["n_pairs"].append(n_pairs)
+        out["var_diff"].append(np.var(d, ddof=ddof))
+
+    return {k: np.array(v) for k, v in out.items()}
+
+
+def extract_sky_timeseries(exposures, region, trim=None, annulus=None, statistic="mean"):
+    """
+    Build a 1D time series x[t] = sky level estimator from a fixed aperture (and optional annulus).
+
+    Parameters
+    ----------
+    exposures : (n, H, W) ndarray
+    region : (y, x, r)
+        aperture center and radius in pixels
+    trim : (i0, i1) or None
+        slice frames: exposures[i0:i1]
+    annulus : (r_in, r_out) or None
+        if provided, compute annulus background and subtract it from aperture mean/sum
+    statistic : {'mean','median','sum'}
+        how to summarize pixels inside the aperture
+
+    Returns
+    -------
+    out : dict with keys:
+        'x_ap' : aperture statistic time series (background-subtracted if annulus given)
+        'x_ann' : annulus statistic time series (if annulus given)
+        'n_pix_ap', 'n_pix_ann'
+    """
+    if trim is not None:
+        exposures = exposures[trim[0]:trim[1]]
+
+    y, x, r = region
+    pos = (x, y)
+
+    ap = CircularAperture(pos, r=r)#
+    ap_mask = ap.to_mask(method="center")
+    # Fix: to_mask() returns a single mask, not a list - remove [0]
+    ap_mask = ap_mask.to_image(exposures.shape[1:]).astype(bool)
+    n_pix_ap = ap_mask.sum()
+
+    if annulus is not None:
+        r_in, r_out = annulus
+        an = CircularAnnulus(pos, r_in=r_in, r_out=r_out)
+        an_mask = an.to_mask(method="center")
+        # Fix: same here - remove [0]
+        an_mask = an_mask.to_image(exposures.shape[1:]).astype(bool)
+        n_pix_ann = an_mask.sum()
+    else:
+        an_mask = None
+        n_pix_ann = 0
+
+    x_ap = np.empty(exposures.shape[0], dtype=float)
+    x_ann = np.empty(exposures.shape[0], dtype=float) if an_mask is not None else None
+
+    for i, frame in enumerate(exposures):
+        ap_vals = frame[ap_mask]
+
+        if statistic == "mean":
+            ap_stat = np.mean(ap_vals)
+        elif statistic == "median":
+            ap_stat = np.median(ap_vals)
+        elif statistic == "sum":
+            ap_stat = np.sum(ap_vals)
+        else:
+            raise ValueError("statistic must be 'mean', 'median', or 'sum'")
+
+        if an_mask is not None:
+            ann_vals = frame[an_mask]
+            # robust background: median is usually best
+            ann_stat = np.median(ann_vals)
+            x_ann[i] = ann_stat
+
+            # subtract background in consistent units:
+            # if 'sum', subtract (background * n_pix_ap); if mean/median, subtract background directly
+            if statistic == "sum":
+                ap_stat = ap_stat - ann_stat * n_pix_ap
+            else:
+                ap_stat = ap_stat - ann_stat
+
+        x_ap[i] = ap_stat
+
+    out = {"x_ap": x_ap, "n_pix_ap": n_pix_ap}
+    if x_ann is not None:
+        out.update({"x_ann": x_ann, "n_pix_ann": n_pix_ann})
+    return out
 
 # Test the frame subtraction
 #%%
@@ -223,18 +329,52 @@ if __name__ == "__main__":
     """
     # Make exposure sequence for testing 
     from exposure_sequences import make_exposure_sequence
-    #%%
-    exposure_sequence = make_exposure_sequence(4, 0.02, self_similar=False)
 
+    #%% 
+    #%%
+    exposure_sequence = make_exposure_sequence(2000, 0.02, self_similar=False)
+
+    # Define the apertures for photometry
+    region = (120, 160, 3)  # (y, x, r) for 
+    test_sky = extract_sky_timeseries(exposure_sequence, region, statistic="sum")
+
+    # Plot as a timeseries 
+    plt.figure(figsize=(10, 4))
+    plt.plot(test_sky["x_ap"], marker='o')
+    plt.xlabel('Frame')
+    plt.ylabel('Aperture Sum')
+    plt.title('Sky Time Series')
+    plt.grid(True)
+    plt.show()
+    #%%
+    # run the chop proxy 
+    coadds_list = np.arange(5, 251)
+
+    test_sky_chopped = variance_vs_frequency_chop_proxy_true(test_sky["x_ap"], coadds_list, frame_dt_s=0.02, method="sum", ddof=1)
+    #%%
+    plt.figure(figsize=(8, 5))
+    plt.plot(test_sky_chopped["f_eff_hz"], test_sky_chopped["var_diff"], marker='o')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('Effective Frequency (Hz)')
+    plt.ylabel('Variance of A-B Differences')
+    plt.title('Variance vs Effective Frequency for Chopped Sky')
+    plt.grid(True, which="both", ls="--")
+    plt.show()
+    #%%
+    #Inject a point source and test the chop sequence and return the 
+    #%%
+
+    #%%
     # Sequence with correlated drift
     #test_sequence = make_exposure_sequence(6, 0.02, drift={"tau": 0.5, "amp_frac": 0.03}, self_similar=True)
 
-    # Imshow exposure sequence 
-    for i in range(exposure_sequence.shape[0]):
-        plt.imshow(exposure_sequence[i], cmap='gray', origin='lower')
-        plt.title(f'Exposure {i}')
-        plt.colorbar(label='Electrons')
-        plt.show()
+    # # Imshow exposure sequence 
+    # for i in range(exposure_sequence.shape[0]):
+    #     plt.imshow(exposure_sequence[i], cmap='gray', origin='lower')
+    #     plt.title(f'Exposure {i}')
+    #     plt.colorbar(label='Electrons')
+    #     plt.show()
 
     #%%
     # Inject point source into exposure sequence
