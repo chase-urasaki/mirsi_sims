@@ -25,8 +25,11 @@ Omega_pix = pixscale**2
 m = (wl_um >= lam1) & (wl_um <= lam2)
 E_band = np.trapz(E[m], wl_um[m])
 
+#efficiency of the system 
+epsilon = 0.1
+
 # Photons / second / pixel (at detector entrance, with only filter transmission applied)
-Ndot_pix = E_band * A_geo * Omega_pix * T
+Ndot_pix = E_band * A_geo * Omega_pix * T * epsilon
 
 print(f"Integrated sky (8.5–13 um): {E_band:.3e} ph/s/m^2/arcsec^2")
 print(f"Sky rate per pixel:         {Ndot_pix:.3e} ph/s/pixel")
