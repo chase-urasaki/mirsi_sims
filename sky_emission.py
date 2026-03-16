@@ -26,7 +26,7 @@ m = (wl_um >= lam1) & (wl_um <= lam2)
 E_band = np.trapz(E[m], wl_um[m])
 
 #efficiency of the system 
-epsilon = 0.1
+epsilon = 0.07
 
 # Photons / second / pixel (at detector entrance, with only filter transmission applied)
 Ndot_pix = E_band * A_geo * Omega_pix * T * epsilon
