@@ -165,29 +165,80 @@ def extract_channels(exposures, channel_width=20, trim=None, y_range=None):
         "channel_width": channel_width,
     }
 
-def timeseries_channels(channels, n, method="sum", statistic="sum"):
+def timeseries_channels(channels, n, method="sum", statistic="sum", aperture=None):
     """
-    For each channel cube, apply coadd_to_dwells and chop_demodulate_pairwise, then summarize into a timeseries.
+    For each channel cube, apply coadd_to_dwells and chop_demodulate_pairwise,
+    then summarize into a timeseries.
+
+    Parameters
+    ----------
+    channels : (n_channels, n_frames, ny, nx) ndarray
+        Channel cubes.
+    n : int
+        Frames per dwell.
+    method : {"sum", "mean"}
+        Coadd method used in coadd_to_dwells.
+    statistic : {"sum", "mean", "median"}
+        Statistic used to summarize each chopped image.
+    aperture : photutils aperture object or (ny, nx) ndarray, optional
+        If provided, summarize only pixels inside the aperture/mask. For ndarray
+        inputs, non-zero values are treated as weights.
     """
     n_channels, N_frames, H_channel, channel_width = channels.shape
     timeseries = np.empty((N_frames // (2 * n), n_channels), dtype=float)
+
+    weights = None
+    median_mask = None
+    if aperture is not None:
+        if isinstance(aperture, np.ndarray):
+            if aperture.shape != (H_channel, channel_width):
+                raise ValueError("aperture mask must match channel image shape (ny, nx)")
+            weights = aperture.astype(float)
+        elif hasattr(aperture, "to_mask"):
+            ap_mask = aperture.to_mask(method="exact")
+            if isinstance(ap_mask, list):
+                if len(ap_mask) != 1:
+                    raise ValueError("Only a single aperture is supported.")
+                ap_mask = ap_mask[0]
+            weights = ap_mask.to_image((H_channel, channel_width))
+            if weights is None:
+                raise ValueError("Aperture does not overlap the channel image.")
+        else:
+            raise TypeError("aperture must be a photutils aperture or a 2D ndarray mask")
+
+        median_mask = weights > 0
+        if not np.any(median_mask):
+            raise ValueError("Aperture/mask contains no pixels in the channel image.")
+        weights_sum = np.nansum(weights)
+        if weights_sum <= 0:
+            raise ValueError("Aperture/mask has non-positive total weight.")
 
     for ch in range(n_channels):
         dwell_cube = coadd_to_dwells(channels[ch], n=n, method=method)
         diff_cube = chop_demodulate_pairwise(dwell_cube)
 
-        if statistic == "mean":
-            timeseries[:, ch] = diff_cube.mean(axis=(1, 2))
-        elif statistic == "median":
-            timeseries[:, ch] = np.median(diff_cube.reshape(diff_cube.shape[0], -1), axis=1)
-        elif statistic == "sum":
-            timeseries[:, ch] = diff_cube.sum(axis=(1, 2))
+        if aperture is None:
+            if statistic == "mean":
+                timeseries[:, ch] = diff_cube.mean(axis=(1, 2))
+            elif statistic == "median":
+                timeseries[:, ch] = np.median(diff_cube.reshape(diff_cube.shape[0], -1), axis=1)
+            elif statistic == "sum":
+                timeseries[:, ch] = diff_cube.sum(axis=(1, 2))
+            else:
+                raise ValueError("statistic must be 'mean', 'median', or 'sum'")
         else:
-            raise ValueError("statistic must be 'mean', 'median', or 'sum'")
+            if statistic == "sum":
+                timeseries[:, ch] = np.nansum(diff_cube * weights, axis=(1, 2))
+            elif statistic == "mean":
+                timeseries[:, ch] = np.nansum(diff_cube * weights, axis=(1, 2)) / weights_sum
+            elif statistic == "median":
+                timeseries[:, ch] = np.median(diff_cube[:, median_mask], axis=1)
+            else:
+                raise ValueError("statistic must be 'mean', 'median', or 'sum'")
 
     return timeseries
 
-def create_variance_curve(channels, coadds_array, frame_dt_s): 
+def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None): 
     """
     Create a curve of variance vs coadd factor for each channel.
     """
@@ -198,7 +249,13 @@ def create_variance_curve(channels, coadds_array, frame_dt_s):
     f_chop_by_coadd = []
 
     for n in coadds_array:
-        timeseries_by_coadd[n] = timeseries_channels(channels, n=n, method="sum", statistic="sum")
+        timeseries_by_coadd[n] = timeseries_channels(
+            channels,
+            n=n,
+            method="sum",
+            statistic="sum",
+            aperture=aperture,
+        )
         t_dwell, f_state, f_chop = dwell_and_chop_frequencies(frame_dt_s, n)
         t_dwell_by_coadd.append(t_dwell)
         f_state_by_coadd.append(f_state)
