@@ -4,14 +4,11 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-wl_ang, E = np.genfromtxt('mk_skybg_nq_10_10_ph.dat', unpack=True)
-# Data has units of ph/sec/as^2/nm/m^2, and wavelength in nm. Convert to microns and check units carefully!
-#%%
-# convert from angstroms to nm
-wl_nm = wl_ang / 10.0
+wl_nm, E = np.genfromtxt('mk_skybg_nq_10_10_ph.dat', unpack=True)
+# Data has units of ph/sec/as^2/nm/m^2, and wavelength in nm. you can leave in nm for now since it integrates out. 
 
 #%% print the first few values to check
-print("Wavelength (um):", wl_nm[:5])
+print("Wavelength (nm):", wl_nm[:5])
 print("Sky emission (ph/s/m^2/arcsec^2/nm):", E[:5])
 
 #%% 
@@ -31,7 +28,7 @@ filter_wl, filter_trans = np.genfromtxt('IRTF_MIRSI.N.dat', unpack=True)
 print(filter_wl)
 #%% 
 # Convert filter wl from angstroms to nm 
-filter_wl_nm = filter_wl / 100.0  # angstroms to nm
+filter_wl_nm = filter_wl / 10.0  # angstroms to nm
 #%% 
 # Use the twin y axis to plot the filter transmission on the same plot
 fig, ax1 = plt.subplots(figsize=(10, 6))
@@ -112,7 +109,7 @@ plt.figure(figsize=(10, 6))
 plt.plot(wl_nm, E_tel_emission_per_arcsec2, label='Telescope Emission', color='green')
 plt.plot(wl_nm, E_tel_filtered, label='Filtered Telescope Emission', color='purple')
 plt.xlabel('Wavelength [nm]')
-plt.xlim(filter_wl_nm[0], filter_wl_nm[-1])  # zoom in on the filter band
+#plt.xlim(filter_wl_nm[0], filter_wl_nm[-1])  # zoom in on the filter band
 plt.yscale('log')
 plt.ylabel('Telescope Emission (ph/s/m^2/arcsec^2/nm)')
 plt.title('Telescope Emission Before and After Filter')
