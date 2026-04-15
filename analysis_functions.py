@@ -263,5 +263,180 @@ def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None):
 
     variances_by_coadd = {n: np.var(timeseries_by_coadd[n], axis=0) for n in coadds_array}
 
+    # # Make a list for the autocorrelation values for each channel and coadd factor, and print the first few values for channel 0.
+
+    # autocorrelations_by_coadd = {
+    # n: compute_autocorrelation(timeseries_by_coadd[n], max_lag=None) for n in coadds_array
+    #     }
+
     return variances_by_coadd, t_dwell_by_coadd, f_state_by_coadd, f_chop_by_coadd
 
+
+def build_timeseries_by_coadd(channels, coadds_array, frame_dt_s, aperture=None):
+    """
+    Generate time series for each coadd factor.
+
+    Returns
+    -------
+    timeseries_by_coadd : dict
+        {n: ndarray (N_samples, n_channels)}
+
+    meta : dict
+        Contains t_dwell, f_state, f_chop, N_samples per coadd
+    """
+    timeseries_by_coadd = {}
+
+    meta = {
+        "t_dwell": {},
+        "f_state": {},
+        "f_chop": {},
+        "n_samples": {},
+    }
+
+    for n in coadds_array:
+        ts = timeseries_channels(
+            channels,
+            n=n,
+            method="sum",
+            statistic="sum",
+            aperture=aperture,
+        )
+
+        timeseries_by_coadd[n] = ts
+
+        t_dwell, f_state, f_chop = dwell_and_chop_frequencies(frame_dt_s, n)
+
+        meta["t_dwell"][n] = t_dwell
+        meta["f_state"][n] = f_state
+        meta["f_chop"][n] = f_chop
+        meta["n_samples"][n] = ts.shape[0]
+
+    return timeseries_by_coadd, meta
+
+def analyze_autocorrelation(
+    timeseries_by_coadd,
+    min_samples_for_acf=5,
+    max_lag_cap=10,
+):
+    """
+    Compute ACF, tau_int, and N_eff for each coadd and channel.
+
+    Returns
+    -------
+    autocorrelations_by_coadd : dict
+    tau_int_by_coadd : dict
+    n_eff_by_coadd : dict
+    """
+    autocorrelations_by_coadd = {}
+    tau_int_by_coadd = {}
+    n_eff_by_coadd = {}
+
+    for n, ts in timeseries_by_coadd.items():
+        N_samples, n_channels = ts.shape
+
+        tau_int = np.full(n_channels, np.nan)
+        n_eff = np.ones(n_channels)  # default = 1 (your choice)
+        acf = None
+
+        # Only compute ACF if enough samples
+        if N_samples >= min_samples_for_acf:
+            max_lag = min(max_lag_cap, max(1, N_samples // 5), N_samples - 1)
+            acf = compute_autocorrelation(ts, max_lag=max_lag)
+
+            if acf is not None:
+                for ch in range(n_channels):
+                    acf_ch = acf[:, ch]
+
+                    if not np.any(np.isfinite(acf_ch)):
+                        continue
+
+                    tau = tau_int_ips(acf_ch)
+
+                    if np.isfinite(tau) and tau > 0:
+                        tau_int[ch] = tau
+
+                        neff = N_samples / (2.0 * tau)
+
+                        # enforce bounds
+                        neff = max(1.0, neff)
+                        neff = min(neff, float(N_samples))
+
+                        n_eff[ch] = neff
+
+        autocorrelations_by_coadd[n] = acf
+        tau_int_by_coadd[n] = tau_int
+        n_eff_by_coadd[n] = n_eff
+
+    return autocorrelations_by_coadd, tau_int_by_coadd, n_eff_by_coadd
+
+
+def tau_int_ips(acf_1d):
+    tau = 0.5
+
+    max_pair = (len(acf_1d) - 1) // 2
+    for k in range(max_pair):
+        i1 = 2*k + 1
+        i2 = 2*k + 2
+
+        if i2 >= len(acf_1d):
+            break
+
+        pair_sum = acf_1d[i1] + acf_1d[i2]
+
+        if not np.isfinite(pair_sum) or pair_sum <= 0:
+            break
+
+        tau += pair_sum
+
+    return tau
+
+def compute_autocorrelation(timeseries, max_lag=None):
+    """
+    Compute the normalized autocorrelation function for each channel.
+
+    Parameters
+    ----------
+    timeseries : ndarray, shape (N_samples, n_channels)
+        Input time series for each channel.
+    max_lag : int or None
+        Maximum lag to return. If None, returns all non-negative lags.
+
+    Returns
+    -------
+    autocorrelations : ndarray, shape (N_lags, n_channels)
+        Normalized ACF for each channel, with lag 0 at index 0.
+    """
+    timeseries = np.asarray(timeseries, dtype=float)
+    N_samples, n_channels = timeseries.shape
+
+    if max_lag is None:
+        max_lag = N_samples - 1
+    max_lag = min(max_lag, N_samples - 1)
+
+    autocorrelations = np.empty((max_lag + 1, n_channels), dtype=float)
+
+    for ch in range(n_channels):
+        x = timeseries[:, ch].copy()
+        x -= np.mean(x)
+
+        var = np.var(x)
+        if var == 0:
+            autocorrelations[:, ch] = np.nan
+            continue
+
+        corr = np.correlate(x, x, mode='full')
+        acf = corr[corr.size // 2:]  # non-negative lags only
+
+        # Unbiased normalization: divide by number of overlapping samples
+        lags = np.arange(N_samples, 0, -1)
+        acf = acf / lags
+
+        # Normalize so ACF(0) = 1
+        acf = acf / acf[0]
+
+        autocorrelations[:, ch] = acf[:max_lag + 1]
+
+    return autocorrelations
+
+
+# %%
