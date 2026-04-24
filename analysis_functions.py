@@ -238,6 +238,44 @@ def timeseries_channels(channels, n, method="sum", statistic="sum", aperture=Non
 
     return timeseries
 
+# def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None): 
+#     """
+#     Create a curve of variance vs coadd factor for each channel.
+#     """
+#     timeseries_by_coadd = {}
+
+#     t_dwell_by_coadd = []
+#     f_state_by_coadd = []
+#     f_chop_by_coadd = []
+
+#     for n in coadds_array:
+#         timeseries_by_coadd[n] = timeseries_channels(
+#             channels,
+#             n=n,
+#             method="sum",
+#             statistic="sum",
+#             aperture=aperture,
+#         )
+#         t_dwell, f_state, f_chop = dwell_and_chop_frequencies(frame_dt_s, n)
+#         t_dwell_by_coadd.append(t_dwell)
+#         f_state_by_coadd.append(f_state)
+#         f_chop_by_coadd.append(f_chop)
+
+#     variances_by_coadd = {n: np.var(timeseries_by_coadd[n], axis=0) for n in coadds_array}
+
+#     # # Make a list for the autocorrelation values for each channel and coadd factor, and print the first few values for channel 0.
+
+#     # autocorrelations_by_coadd = {
+#     # n: compute_autocorrelation(timeseries_by_coadd[n], max_lag=None) for n in coadds_array
+#     #     }
+
+#     # Flip the frequency so that the first value corresponds to the longest dwell time (lowest frequency) and the last value corresponds to the shortest dwell time (highest frequency).
+#     t_dwell_by_coadd = t_dwell_by_coadd
+#     f_state_by_coadd = f_state_by_coadd
+#     f_chop_by_coadd = f_chop_by_coadd
+    
+#     return variances_by_coadd, t_dwell_by_coadd, f_state_by_coadd, f_chop_by_coadd
+
 def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None): 
     """
     Create a curve of variance vs coadd factor for each channel.
@@ -247,6 +285,7 @@ def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None):
     t_dwell_by_coadd = []
     f_state_by_coadd = []
     f_chop_by_coadd = []
+    variances_by_coadd = []  # Change to list
 
     for n in coadds_array:
         timeseries_by_coadd[n] = timeseries_channels(
@@ -260,17 +299,11 @@ def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None):
         t_dwell_by_coadd.append(t_dwell)
         f_state_by_coadd.append(f_state)
         f_chop_by_coadd.append(f_chop)
+        variances_by_coadd.append(np.var(timeseries_by_coadd[n], axis=0))  # Append in same order
 
-    variances_by_coadd = {n: np.var(timeseries_by_coadd[n], axis=0) for n in coadds_array}
-
-    # # Make a list for the autocorrelation values for each channel and coadd factor, and print the first few values for channel 0.
-
-    # autocorrelations_by_coadd = {
-    # n: compute_autocorrelation(timeseries_by_coadd[n], max_lag=None) for n in coadds_array
-    #     }
-
+    # Remove the old dictionary comprehension line
+    
     return variances_by_coadd, t_dwell_by_coadd, f_state_by_coadd, f_chop_by_coadd
-
 
 def build_timeseries_by_coadd(channels, coadds_array, frame_dt_s, aperture=None):
     """
