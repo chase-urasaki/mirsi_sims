@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os 
 from astropy.io import fits
+from scipy.signal import welch
 
 
 def read_in_fits(file_directory):
@@ -276,6 +277,52 @@ def timeseries_channels(channels, n, method="sum", statistic="sum", aperture=Non
     
 #     return variances_by_coadd, t_dwell_by_coadd, f_state_by_coadd, f_chop_by_coadd
 
+def psd_of_channels(channels, frame_dt_s, aperture=None):
+
+    """
+    Compute the power spectral density (PSD) no coadds via Welch's method for each channel, and return the frequencies and PSD values for each channel.
+    """
+    timeseries = timeseries_channels(
+        channels,
+        n=1,
+        method="sum",
+        statistic="sum",
+        aperture=aperture,
+    )
+    freqs_by_channel = {}
+    psd_by_channel = {}
+
+    for ch in range(timeseries.shape[1]):
+        ts_ch = timeseries[:, ch]
+        ts_ch -= np.mean(ts_ch)
+        fft_vals = np.fft.rfft(ts_ch)
+        psd = (np.abs(fft_vals) ** 2) / len(ts_ch)
+        freqs_by_channel[ch] = np.fft.rfftfreq(timeseries.shape[0], d=frame_dt_s)  
+        psd_by_channel[ch] = psd
+    return freqs_by_channel, psd_by_channel
+
+def psd_welch(channels, frame_dt_s, aperture=None):
+    """
+    Compute the power spectral density (PSD) using Welch's method for each channel, and return the frequencies and PSD values for each channel.
+    """
+    timeseries = timeseries_channels(
+        channels,
+        n=1,
+        method="sum",
+        statistic="sum",
+        aperture=aperture,
+    )
+    freqs_by_channel = {}
+    psd_by_channel = {}
+
+    for ch in range(timeseries.shape[1]):
+        ts_ch = timeseries[:, ch]
+        ts_ch -= np.mean(ts_ch)
+        freqs, psd = welch(ts_ch, fs=1.0/frame_dt_s)
+        freqs_by_channel[ch] = freqs
+        psd_by_channel[ch] = psd
+    return freqs_by_channel, psd_by_channel
+
 def create_variance_curve(channels, coadds_array, frame_dt_s, aperture=None): 
     """
     Create a curve of variance vs coadd factor for each channel.
@@ -470,6 +517,75 @@ def compute_autocorrelation(timeseries, max_lag=None):
         autocorrelations[:, ch] = acf[:max_lag + 1]
 
     return autocorrelations
+
+def compute_variance_errors_from_sample_count(variances_by_coadd, coadds_array, n_frames):
+    """
+    Compute variance errors using raw sample counts.
+    
+    Parameters
+    ----------
+    variances_by_coadd : list
+        List of variance arrays (n_channels,) for each coadd
+    coadds_array : array
+        Array of coadd factors used
+    n_frames : int
+        Total number of raw frames
+    
+    Returns
+    -------
+    variance_errors : list
+        Standard errors on variance for each coadd/channel
+    """
+    variance_errors = []
+    
+    for i, n in enumerate(coadds_array):
+        # Number of independent chopped pairs
+        n_pairs = n_frames // (2 * n)
+        
+        var = variances_by_coadd[i]
+        
+        # Standard error on variance (assumes independent samples)
+        # This is a lower bound if temporal correlations exist
+        std_err = var * np.sqrt(2.0 / (n_pairs - 1))
+        
+        variance_errors.append(std_err)
+    
+    return variance_errors
+
+
+def bootstrap_variance_by_coadd(timeseries_by_coadd, n_bootstrap=500):
+    """
+    Compute variance errors via bootstrap for each coadd factor.
+    
+    Parameters
+    ----------
+    timeseries_by_coadd : dict
+        {n: timeseries array (N_samples, n_channels)}
+    n_bootstrap : int
+        Number of bootstrap iterations
+    
+    Returns
+    -------
+    variance_errors_by_coadd : dict
+        {n: standard errors on variance per channel}
+    """
+    variance_errors_by_coadd = {}
+    
+    for n, ts in timeseries_by_coadd.items():
+        N_samples, n_channels = ts.shape
+        bootstrap_vars = np.zeros((n_bootstrap, n_channels))
+        
+        for i in range(n_bootstrap):
+            # Resample with replacement
+            indices = np.random.choice(N_samples, size=N_samples, replace=True)
+            resampled = ts[indices, :]
+            bootstrap_vars[i, :] = np.var(resampled, axis=0, ddof=1)
+        
+        # Standard deviation across bootstrap samples is the error estimate
+        variance_errors_by_coadd[n] = np.std(bootstrap_vars, axis=0)
+    
+    return variance_errors_by_coadd
+
 
 
 # %%
